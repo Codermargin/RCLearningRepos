@@ -1436,11 +1436,233 @@ new Promise<void>((resolve,reject) => {
 
 ### API
 
-- Promise.resolve()和Promise.reject()
+- **Promise.resolve()和Promise.reject()**
+  - 使用Promise.resolve()可以得到一个已经resolve的Promise。
+    - 入参是Promise对象，则原样返回Promise
+    - 入参是个立即值，则返回包裹的立即值
+  - Promise.reject()类似
+
+```typescript
+const p1 = Promise.resolve(100);
+console.log(p1); // Promise { 100 }
+
+const p2 = new Promise((resolve, reject) => {
+  resolve(200);
+});
+console.log(p2); // Promise { 200 }
+
+const p3 = Promise.resolve(p2);
+console.log(p3); // Promise { 200 }
+console.log(p2 === p3); // true
+```
+
+
+
+- **Promise.all()**
+  - 当成员中有一个被拒，Promise.all()中返回的promise就会立即被拒绝，并丢弃所有其他promise的全部结果。
+  - 调用此API会协调所有promise的运行，运行效率取决于最慢的那个
+
+```typescript
+import fs from 'fs';
+
+const read = (filename: string) => {
+  return new Promise((resolve, reject) => {
+    fs.readFile(filename, 'utf8', (err: any, data: unknown) => {
+    	if (err){
+    		reject(err);
+    	}
+    	resolve(data);
+    });
+  });
+};
+
+const p1 = read('a.txt');
+const p2 = read('b.txt');
+// const p3 = new Promise((resolve, reject) => {
+//   reject(new Error('This is an error!'));
+// });
+
+const results = Promise.all([p1, p2]);
+results
+.then(data => {
+  console.log(data); // never reach here!
+}, err => {
+  console.error(err); // Error: This is an error!
+});
+```
+
+- Promise.race()
+
+  - Promise.race()接收一个promise数组，在这个数组中他们是竞争的关系，哪个先完成就先返回哪个。
+  - 在下面的demo中，优先执行p1
+
+  ```typescript
+  
+  const delay = (time: number) => {
+      return new Promise((resolve,reject)=>{
+          setTimeout(resolve,time);
+      });
+  };
+  
+  const p1 = new Promise((resolve,reject)=>{
+      delay(1000).then(data => {
+          return resolve(100);
+      })
+  });
+  
+  const p2 = new Promise((resolve,reject)=>{
+      delay(5000).then(data => {
+          return resolve(200);
+      })
+  });
+  
+  const start:any = new Date().getTime();
+  //调用race函数
+  const results = Promise.race([p1,p2]);
+  results
+  .then(
+      data => {
+          console.log(data);
+          const end:any = new Date().getTime();
+          console.log(`时间持续：${end - start} ms`);
+      }
+  );
+  ```
+
+  - 使用Promise.race带延时
+
+  ```typescript
+  const delay = (time: number) => {
+      return new Promise((resolve,reject)=>{
+          setTimeout(resolve,time);
+      });
+  };
+  //延时函数
+  const timeout = (time : number) => {
+      return new Promise((resolve,reject) => {
+          const err = new Error('Timeout Error');
+          setTimeout(()=>{
+              reject(err);
+          },time);
+      })
+  }
+  
+  const p1 = new Promise((resolve,reject)=>{
+      delay(1000).then(data => {
+          return resolve(100);
+      })
+  });
+  
+  const p2 = new Promise((resolve,reject)=>{
+      delay(5000).then(data => {
+          return resolve(200);
+      })
+  });
+  
+  const p = Promise.race([p1,timeout(3000)]);
+  p
+  .then(data => {
+      console.log(data);
+  },err => {
+      console.error(err);
+  });
+  
+  const p_ = Promise.race([p2,timeout(3000)]);
+  p_//报错
+  .then(data => {
+      console.log(data);
+  },err => {
+      console.error(err);
+  });
+  ```
+
+- Promise.none()
+
+  - Promise.none() 和Promise.all()相反，要求所有promise都要被拒绝，然后将拒绝转化成完成值。
+
+- Promise.any()
+
+  - 会忽略拒绝，只要有一个promise完成，整体的状态即为完成。
+
+- Promise.first()
+
+  - 只要第一个promise完成，它就会忽略后续promise的任何完成和拒绝。
+
+- Promise.last()
+
+  - 类似于Promise.first()，但条件变为只有最后一个promise完成胜出。
+
+
+
+- then()和catch()
+  - p.then(fulfilled);
+  - p.then(fulfilled, rejected);
+  - p.catch(rejected); // 等价于 p.then(null, rejected);
+
+### ★包装旧式异步API方法
+
+- 包装
+
+```typescript
+const promiseWrapper = fn => {
+  return function () {
+    const args = [].slice.call(arguments); // convert arguments to a real array
+    return new Promise((resolve, reject) => {
+      const cb = (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      };
+      fn.apply(null, args.concat(cb));//调用函数冒充
+    });
+  };
+};
+```
+
+- 调用
+  - read已经经过Promise进行包裹
+
+```typescript
+const fs = require('fs');
+const read = promiseWrapper(fs.readFile);
+read('a.txt', 'utf8')
+.then(data => {
+  console.log(data);
+}, err => {
+  console.error(err);
+})
+```
 
 
 
 ## 3、迭代器和生成器
+
+- 生成器函数定义
+  - function * 进行生成器的定义
+  - 返回一个迭代器
+  - 工作流程：
+    - 创建一个生成器函数，调用并返回一个迭代器
+    - 通过next()运行到下一个yield
+    - 通过next(param)传入参数进行运行
+    - yield表示函数的暂停点，如果yield后面没有接值，就返回undefined，否则返回后面的值 
+
+```typescript
+function *generator(){
+    console.log('hello');
+    const x = 7 * (yield 'stop');
+    return x;
+}
+const it = generator();
+var res = it.next();
+console.log(res);
+
+console.log('pause for a while');
+
+res = it.next(3);
+console.log(res);
+```
 
 
 
